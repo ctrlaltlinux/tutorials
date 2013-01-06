@@ -1,0 +1,55 @@
+[grid="rows"]
+[options="header",cols="<,<,<,<,<,<"]
+|===========================
+| Hostname | OS | Memory | Disk | Kickstart | Manifest
+| puppet.cal.local | CentOS 6.3 | 256M | 10G | https://github.com/ctrlaltlinux/tutorials/configuration_management/puppet.ks[puppet.ks] | https://github.com/ctrlaltlinux/tutorials/configuration_management/puppet.pp[puppet.pp]
+| client.cal.local | CentOS 6.3 | 256M | 10G | https://github.com/ctrlaltlinux/tutorials/configuration_management/client.ks[client.ks] | https://github.com/ctrlaltlinux/tutorials/configuration_management/client.pp[client.pp]
+|===========================
+
+Introduction
+------------
+
+
+Network topology
+----------------
+. Show diagram with server and client
+. Show ports used for communications
+
+Installation
+------------
+Diabling SELinux
+~~~~~~~~~~~~~~~~
+Before starting with installing puppet and foreman it should be pointed out that the configuration that we'll be using will break very quickly with SELinux enabled. To get us through the initial set up, we'll start by disbaling SELinux for now but will create a policy at the end of our installation so that we can turn it back on.
+
+Just remember if you reboot at any time during the installation that you will have to put SELinux back in to permissive mode again when your server boots.
+
+----
+setenforce 0
+----
+
+Getting the packages
+~~~~~~~~~~~~~~~~~~~~
+In order to install puppet and foreman we'll first need to set up a couple of additional yum repositories. For puppet we'll be using the EPEL repo. While PuppetLabs do provide their own repo, which includes a later release of puppet, unfortunately this is not compatible with the RPMS provided by the forman repo.
+
+Run the following to set up the repos, install the software and ensure that each service is configured correctly for boot.
+
+----
+yum install http://mirror.optus.net/epel/6/i386/epel-release-6-8.noarch.rpm
+yum install http://yum.theforeman.org/releases/1.0/el6/foreman-release.rpm
+yum install puppet-server foreman-mysql mysql-server
+
+chkconfig mysqld on
+chkconfig puppetmaster off
+chkconfig foreman off
+chkconfig puppet off
+
+service mysqld start
+----
+
+
+
+References
+----------
+. http://theforeman.org/projects/foreman/wiki/RPM's_distribution_based_installation
+. http://theforeman.org/projects/foreman/wiki/External_Nodes
+. http://sergiy.kyrylkov.name/2012/02/26/phusion-passenger-with-apache-on-rhel-6-centos-6-sl-6-with-selinux/
