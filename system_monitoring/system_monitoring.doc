@@ -6,8 +6,7 @@
 | client.cal.local | CentOS 6.3 | 256M | 10G | https://github.com/ctrlaltlinux/tutorials/system_monitoring/client.ks[client.ks] | https://github.com/ctrlaltlinux/tutorials/system_monitoring/client.pp[client.pp]
 |===========================
 
-Introduction
-------------
+== Introduction
 Computers are prone to failure. Given a long enough timeline, sooner or later something is going to fail within your network, the question is… will you know when it does? Nagios is a system that runs pre-defined checks on your servers and network devices and will send a notification when a test fails. This can, in many cases, alert you about a problem before your users even become aware of it.
 
 Some examples of the types of things that you may like to check on your hosts could be:
@@ -19,8 +18,7 @@ Some examples of the types of things that you may like to check on your hosts co
 
 In this tutorial you will learn how to install Nagios and to configure it to actively monitor a Linux server. You'll also learn how to write your own custom Nagios checks and, finally, we'll finish off by installing pnp4nagios which will take the performance data returned by Nagios checks to create graphs.
 
-Network topology
-----------------
+== Network topology
 . Network map
 . Port used (with SSL)
 . Explain active vs passive checks (nrpe vs nrdp)
@@ -28,30 +26,28 @@ Network topology
 In this tutorial we will be working off the above diagram. As you can see, two servers will be used. On nagios.cal.local we will be installing the Nagios monitoring software. This comes in the form of a web interface which will be run by Apache. The second server, client.cal.local, will be used as an example of how to configure a Linux host though Nagios can also be used to monitor Windows hosts ans other network devices.
 
 
-Installation
-------------
+== Installation
 Nagios is not provided as part of the standard CentOS software, so our first step is to install the EPEL (Extended Packages For Linux) repository. Once installed we can then install Apache, Nagios and the Nagios plugins package.
-----
+------
 yum install http://mirror.optus.net/epel/6/i386/epel-release-6-7.noarch.rpm
 yum install httpd nagios nagios-plugins-all
-----
+------
 
 Don't forget to set the services to start at boot. Also, Nagios creates it's own vhost file as part of its installation. So, go ahead and start both Apache and Nagios now so we can log in and view the Nagios UI.
-----
+------
 chkconfig nagios on
 chkconfig httpd on
 service nagios start
 service httpd start
-----
+------
 
 Before being able to connect from an external host, we'll need to allow inbound connections on port 80 in the local firewall. In a production environment, you would want to use https rather than unencypted http. Go ahead and add a firewall rule using the following. Don't forget to save the rule once added!
-----
+------
 iptables -I INPUT 4 -p tcp --dport 80 -j ACCEPT
 service iptables save
-----
+------
 
-Basic Tour
-----------
+== Basic Tour
 Now that our server is configured, you can log in to Nagios by browsing to \http://ip address>/nagios. You will be prompted for a user name and password, these will be set to the the following:
 
 * *Username:* nagiosadmin
@@ -59,17 +55,16 @@ Now that our server is configured, you can log in to Nagios by browsing to \http
 
 Have a look around once logged in. You will find the default host, called localhost. This is, of course, your Nagios server.
 
-Configuration
--------------
+== Configuration
 While monitoring the Nagios server itself is a good start, you're probably going to quickly want to add more servers to your Nagios installation. To do this, start by changing to the '/etc/nagios' directory and creating a new subdirectory called 'hosts'.
-----
+------
 cd /etc/nagios
 mkdir hosts
-----
+------
 
 Create a new file in the hosts directory called 'client.cal.local.cfg' and copy and paste the following configuration:
 
-----
+------
 define host{
         use                     linux-server
         host_name               client.cal.local
@@ -91,71 +86,64 @@ define service{
         check_command                   check_ssh
         notifications_enabled           1
         }
-----
+------
 
 . Where files are located
 . Add a host
 . Add checks (active and passive)
 
-Adding a server
----------------
+== Adding a server
 
-Configuring the client
-~~~~~~~~~~~~~~~~~~~~~~
-----
+
+=== Configuring the client
+------
 yum install nrpe
 chkconfig nrpe on
 service nrpe start
-----
+------
 
-----
+------
 iptables -I INPUT 4 -p tcp --dport 5666 -j ACCEPT
 service iptables save
-----
+------
 
-Configuring the server
-~~~~~~~~~~~~~~~~~~~~~~
-----
+=== Configuring the server
+------
 cd /etc/nagios
 mkdir hosts
 emacs hosts/test.cal.local
-----
+------
 copy details from /etc/nagios/objects/localhost.cfg (use find-and-replace)
 emacs /etc/nagios/nagios.cfg (add the hosts directory - cfg_dir)
-----
+------
 service nagios reload
-----
+------
 
-Writing checks
---------------
+== Writing checks
 . Explain how it works
 . Make mention of nagios exchange
 . Create check for uptime
 
-Installing PNP 4 Nagios
------------------------
-----
+== Installing PNP 4 Nagios
+------
 yum install pnp4nagios
-----
+------
 
 edit /etc/nagios/nagios.cfg (enable performance data and copy and paste from pnp4nagios example config)
 
-----
+------
 service nagios reload
 service httpd reload
-----
+------
 
-Adding popups
-~~~~~~~~~~~~~
+=== Adding popups
 cp /usr/share/doc/pnp4nagios-0.6.16/contrib/ssi/status-header.ssi /usr/share/nagios/html/ssi/
 edit /etc/nagios/objects/commands (add extra string to action_url)
 
-Final notes
------------
+== Final notes
 . Configure email alerts
 . Install the Nagios chrome plugin
 
-References
-----------
+== References
 . http://shah-oss.blogspot.com.au/2011/06/pnp4nagios-with-centos.html
 . http://nnfailagutan.wordpress.com/2012/01/28/how-to-install-pnp4nagios-in-bulk-mode-for-centosrhelfedora/

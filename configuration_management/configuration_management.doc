@@ -6,50 +6,322 @@
 | client.cal.local | CentOS 6.3 | 256M | 10G | https://github.com/ctrlaltlinux/tutorials/configuration_management/client.ks[client.ks] | https://github.com/ctrlaltlinux/tutorials/configuration_management/client.pp[client.pp]
 |===========================
 
-Introduction
-------------
+== Introduction
+Puppet is a fanastic tool for configuring servers that has really taken off with the advent of cloud computing and the need to provision machines quickly and frequently, but puppet can be made more useful by using it with foreman. Foreman provide a web UI for managing the hosts, and the classes assigned to those hosts, that are defined in puppet.
 
+Using puppet and foreman together is a winning combination for systems provising and in this tutorial I will show you how to get up and running quickly by installing both puppet and foreman and then configuring them to talk to each other. There's a lot of software involved and this tutorial isn't even going to scratch the surface of what these two pieces of software can do, it's marely intended to get them installed and working.
 
-Network topology
-----------------
+== Network topology
 . Show diagram with server and client
 . Show ports used for communications
 
-Installation
-------------
-Diabling SELinux
-~~~~~~~~~~~~~~~~
+== Installation
+=== Diabling SELinux
 Before starting with installing puppet and foreman it should be pointed out that the configuration that we'll be using will break very quickly with SELinux enabled. To get us through the initial set up, we'll start by disbaling SELinux for now but will create a policy at the end of our installation so that we can turn it back on.
 
 Just remember if you reboot at any time during the installation that you will have to put SELinux back in to permissive mode again when your server boots.
 
-----
+------
 setenforce 0
-----
+------
 
-Getting the packages
-~~~~~~~~~~~~~~~~~~~~
+=== Getting the packages
 In order to install puppet and foreman we'll first need to set up a couple of additional yum repositories. For puppet we'll be using the EPEL repo. While PuppetLabs do provide their own repo, which includes a later release of puppet, unfortunately this is not compatible with the RPMS provided by the forman repo.
 
-Run the following to set up the repos, install the software and ensure that each service is configured correctly for boot.
+Run the following to set up the repos, install the software and ensure that each service is configured correctly for boot. Not that we will be using the foreman mysql package. To use another database backend, such as postgres, take a look at what is available in the repos with "yum search foreman".
 
-----
+------
 yum install http://mirror.optus.net/epel/6/i386/epel-release-6-8.noarch.rpm
 yum install http://yum.theforeman.org/releases/1.0/el6/foreman-release.rpm
-yum install puppet-server foreman-mysql mysql-server
+yum install puppet-server foreman-mysql mysql-server httpd mod_ssl
 
 chkconfig mysqld on
+chkconfig httpd on
+chkconfig puppet on
 chkconfig puppetmaster off
 chkconfig foreman off
-chkconfig puppet off
 
 service mysqld start
-----
+------
+
+As you can see in the above, we've disabled puppet, puppetmaster and foreman to ensure that they are not started at boot. The reason for this is that they will instead be run using Apache and passenger (aka mod_ruby).
+
+=== Configuring the database
+// Need to figure out how to use foot notes in asciidoc
+Foreman stores all host information, facts, stored configs and classes etc in a database. For this tutorial we will be using mysql. Note that I ran in to some problem using the foreman-mysql2 package though these may have been resolve by the time you read this.
+
+The commands below will set the mysql root user's password, create a database for foreman to store its configuration and set up a user with appropreate access.
+
+------
+/usr/bin/mysqladmin -u root password 'dbpassword123'
+mysql -u root -p
+mysql> create database foreman;
+mysql> grant all on foreman.* to 'foreman'@'localhost' identified by 'dbpassword123';
+mysql> flush privileges;
+------
+
+Next we need to modify the foreman settings to tell it the name of the database user credentials for which to access it with. Edit the _/etc/foreman/database.yml_ file to contain the following:
+
+------
+production:
+  adapter: mysql 
+  database: foreman
+  username: foreman
+  password: dbpassword123
+  host: localhost
+------
+
+Finally we need to populate the newly created database. You can do this using the following:
+------
+su - foreman -s /bin/bash -c /usr/share/foreman/extras/dbmigrate
+------
+
+== Apache configuration
+As previously mentioned, we're going to run both puppet and foreman using Apache and passenger rather than their default services. The reason for this is simply that these applications, namely puppet, do not scale well using their built in services. Using Apache will allow these applications to scale to support a much greater number of servers and also allows for additional Apache plugins such as mod_security or mod_radius etc to be used if required too.
+
+To allow Apache to run puppet and foreman we're first going to need to install passenger. Unfortunately passenger isn't available from either the CentOS, EPEL or Foreman repos. There may be a few RPMs or source-based RPMs floating around, but for this tutorial I'm just going to compile and install it manually.
+
+To install all the required software run the following:
+------
+yum install ruby-devel gcc gcc-c++ curl-devel openssl-devel zlib-devel httpd-devel apr-devel apr-util-devel
+gem install passenger
+passenger-install-apache2-module
+------
+
+The passenger installation command will present a wizard. Simply press enter throughout the prompts in order to compile and install the required Apache module.
+
+Next we're going to need to reconfigure Apache to load the newly install passenger module. This is done by adding the following to the end of your _/etc/httpd/conf/httpd.conf_ file:
+
+------
+LoadModule passenger_module /usr/lib/ruby/gems/1.8/gems/passenger-3.0.18/ext/apache2/mod_passenger.so
+PassengerRoot /usr/lib/ruby/gems/1.8/gems/passenger-3.0.18
+PassengerRuby /usr/bin/ruby
+------
+
+Be sure to replace the above version numers with the actual version numbers of your installed copy of passenger. This will have been presented to you when compiling the modules.
+
+Finally, for both puppet and foreman we're going to create a seperate vhost config file under the /etc/httpd/conf.d directory. Use the following as the bases of your configuration.
+
+------
+## /etc/httpd/conf.d/puppet.conf
+PassengerHighPerformance on
+PassengerMaxPoolSize 12
+PassengerPoolIdleTime 300
+PassengerMaxRequests 10000
+PassengerStatThrottleRate 120
+RackAutoDetect Off
+RailsAutoDetect Off
+
+Listen 8140
+
+<VirtualHost *:8140>
+  SSLEngine on
+  SSLProtocol -ALL +SSLv3 +TLSv1
+  SSLCipherSuite ALL:!ADH:RC4+RSA:+HIGH:+MEDIUM:-LOW:-SSLv2:-EXP
+  
+  SSLCertificateFile /var/lib/puppet/ssl/certs/puppet.cal.local.pem
+  SSLCertificateKeyFile /var/lib/puppet/ssl/private_keys/puppet.cal.local.pem
+  SSLCertificateChainFile /var/lib/puppet/ssl/ca/ca_crt.pem
+  SSLCACertificateFile /var/lib/puppet/ssl/ca/ca_crt.pem
+  SSLCARevocationFile /var/lib/puppet/ssl/ca/ca_crl.pem
+  SSLVerifyClient optional
+  SSLVerifyDepth 1
+  SSLOptions +StdEnvVars
+  
+  # This header needs to be set if using a loadbalancer or proxy
+  RequestHeader unset X-Forwarded-For
+  
+  RequestHeader set X-SSL-Subject %{SSL_CLIENT_S_DN}e
+  RequestHeader set X-Client-DN %{SSL_CLIENT_S_DN}e
+  RequestHeader set X-Client-Verify %{SSL_CLIENT_VERIFY}e
+  
+  DocumentRoot /etc/puppet/rack/public/
+  RackBaseURI /
+
+  <Directory /etc/puppet/rack/>
+    Options None
+    AllowOverride None
+    Order allow,deny
+    allow from all
+  </Directory>
+</VirtualHost>
+------
+
+------
+## /etc/httpd/conf.d/foreman.conf
+PassengerHighPerformance on
+PassengerMaxPoolSize 12
+PassengerPoolIdleTime 300
+PassengerMaxRequests 10000
+PassengerStatThrottleRate 120
+RackAutoDetect Off
+RailsAutoDetect Off
+
+Listen 3000
+
+<VirtualHost *:3000>
+  ServerAdmin ctrlaltlinux@gmail.com
+  DocumentRoot /usr/share/foreman/public
+  ServerName localhost
+  ErrorLog logs/foreman.cal.local-error_log
+  CustomLog logs/foreman.cal.local-access_log common
+  
+  RackAutoDetect On
+  RailsBaseURI /
+  RailsEnv production
+</VirtualHost>
+------
+
+Now we need to copy the rack file referenced by the, puppet configuration, in to its correct location. Be sure to change config.ru to be owned by puppet, otherwise puppet will run under the httpd user and not puppet. This will certainly cause permissions problems.
+
+------
+mkdir -p /etc/puppet/rack/{public,tmp}
+cp /usr/share/puppet/ext/rack/files/config.ru /etc/puppet/rack/
+chown puppet.puppet /etc/puppet/rack/config.ru
+------
+
+The last step before starting Apache is to simply comment out the example virual host from the _/etc/httpd/conf.d/ssl.conf_ file. Open this file and add a '#' comment all the way from the _<VirtualHost *:444>_ tag down to the closing tag _</VirtualHost>_.
+
+With that final step completed, we can finally fire up Apache and log in to our website.
 
 
+== Configuring Puppet ==
 
-References
-----------
+
+== DNS and Firewall ==
+With foreman configured there is only a few things left to complete in order to ensure that puppet and foreman play nice together. Firstly, puppet relies on being able to resolve the hostname "puppet" to an IP address. Because our example network does not have a DNS server I am going to add an entry to /etc/hosts manually. If additional machines are configured within the network then they too must be able to resolve the hostname "puppet".
+
+Modify the _/etc/hosts_ file to include the following line:
+------
+127.0.0.1   puppet.cal.local   puppet
+------
+
+Obviously, in order for our hosts to connect to puppet, firewall access must be allowed. Note that hosts only need to connect to puppet on port 8140, port 3000 is the foreman adminstration interface and doesn't/shouldn't be accessible by any of the client servers.
+
+Add the following to the _/etc/sysconfig/iptables_ file and restart the iptables service:
+-------
+-A INPUT -m state --state NEW -m tcp -p tcp --dport 8140 -j ACCEPT
+-A INPUT -m state --state NEW -m tcp -p tcp --dport 3000 -j ACCEPT
+------
+
+------
+service iptables restart
+------
+
+== Initialise Puppet certificates ==
+As mentioned preivously, we will not be using the puppetmaster service directly for hosts connecting to our server, instead, puppet will be run using Apache and passenger. Before our configuration will work however, we just need to do one run of puppet using the puppetmaster service so that it will automatically generate it's private key and public certificate configuration. This SSL certificate information is defined in the puppet.conf configuration file.
+
+Run the following to generate the puppet server certificate and private key:
+------
+service puppetmaster start
+puppet agent --test
+service puppetmaster stop
+------
+
+Finally, we should now be able to start Apache and verify that puppet is able to download it's manifests:
+------
+service httpd start
+puppet agent --test
+------
+
+
+== Configure puppet to use foreman ==
+Some configuration is required before puppet and foreman can work together. Firstly we must add some configuration to the _/etc/puppet/puppet.conf_ file that specified the foreman database and that the host should send reports back to the server. Also, a script is specified that allows puppet to recieve it's host information from foreman.
+
+Modify the _/etc/puppet/puppet.conf_ file to include the following:
+------
+[main]
+    # Foreman related configuration 
+    storeconfigs = true
+    dbadapter = mysql
+    dbuser = foreman
+    dbpassword = dbpassword123
+    dbserver = localhost
+    dbname = foreman
+
+    reports = log, foreman
+    external_nodes = /usr/bin/ruby /etc/puppet/node.rb
+    node_terminus = exec
+
+    modulepath=/etc/puppet/modules
+
+[agent]
+    report = true
+------
+
+Note that the above configuration should be added in addition to what is already defined in the puppet.conf file. Also note that all hosts that use puppet must also contain the "_report = true_" directive under the _[agent]_ section in their puppet.conf file in order for them to send their facts and other information back to foreman.
+
+As can be seen in the above config. We have told puppet to retrieve node information from foreman using a script - _/etc/puppet/node.rb_. This script is available from https://github.com/theforeman/puppet-foreman/master/templates/external_node.rb.erb and should be downloaded, edited with the appropreate settings and then renamed to node.rb.
+
+------
+cd /etc/puppet/
+wget https://raw.github.com/theforeman/puppet-foreman/master/templates/external_node.rb.erb
+mv external_node.rb.erb node.rb
+------
+
+Modify the file to contain the following settings:
+------
+SETTINGS = {
+  :url => "http://localhost:3000",
+  :puppetdir => "/var/lib/puppet",
+  :facts => true,
+  :storeconfigs => true,
+  :timeout => 3,
+}
+------
+
+One last configuration, that also comes in the form of a ruby script, is to download and install the foreman-report.rb file. This will ensure that puppet sends it's information back to foreman.
+
+To install this file, perform the following:
+------
+cd /usr/lib/ruby/site_ruby/1.8/puppet/reports
+wget https://raw.github.com/theforeman/puppet-foreman/master/templates/foreman-report.rb.erb
+mv foreman-report.rb.erb foreman.rb
+------
+
+Now edit the foreman.rb file and change the $foreman_url to the URL of our server, in this case localhost:
+------
+$foreman_url='http://localhost:3000'
+------
+
+Finally, to make these modifications take effect, restart Apache:
+------
+service httpd start
+------
+
+== Testing
+All going well we should now be able to log in to the foreman web interface by browsing to http://server_ip:3000. This should present the setup page as we have not yet added any clients.
+
+Running puppet on the server should send its host information to foreman:
+------
+puppet agent --test
+------
+
+Refreshing the forman web UI should now show one host as having checked in.
+
+== Re-enabling SELinux
+A lot of packages have now been installed and a lot of configuration files have had to change. It's these changes to the default configuration that cause SELinux to play up. To fix SELinux and ensure that it works with our server's configuration we can take a look at what violations have been reported and then pipe these through the audit2allow package to create a module that we can install.
+
+Run the following to view the SELinux violations that have been generated during the installation process:
+------
+aureport -a
+------
+
+Now install the policycoreutils-python package and use audit2allow to create a new policy that allows the operations that SELinux would have otherwise blocked:
+------
+yum install policycoreutils-python
+cat /var/log/audit/audit.log | audit2allow -M passenger
+semodule -i passenger.pp
+setenforce 1
+------
+
+Note: It is more than likely that you will have to run the above commands a few times before all operations start being permitted. If you suspect SELinux may be causing errors, just review the output "aureport -a | tail" and see when the last violations occured.
+
+Now reboot your sever and ensure that it is still operating as expected.
+
+
+== References
 . http://theforeman.org/projects/foreman/wiki/RPM's_distribution_based_installation
 . http://theforeman.org/projects/foreman/wiki/External_Nodes
+. http://projects.puppetlabs.com/projects/1/wiki/using_stored_configuration
 . http://sergiy.kyrylkov.name/2012/02/26/phusion-passenger-with-apache-on-rhel-6-centos-6-sl-6-with-selinux/
