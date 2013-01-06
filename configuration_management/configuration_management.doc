@@ -7,7 +7,7 @@
 |===========================
 
 == Introduction
-Puppet is a fanastic tool for configuring servers that has really taken off with the advent of cloud computing and the need to provision machines quickly and frequently, but puppet can be made more useful by using it with foreman. Foreman provide a web UI for managing the hosts, and the classes assigned to those hosts, that are defined in puppet.
+Puppet is a fanastic tool for configuring servers that has really taken off with the introduction of cloud computing and the need to provision machines quickly and frequently, but puppet can be made more useful by using it with foreman. Foreman provide a web UI for managing the hosts, and the classes assigned to those hosts, that are defined in puppet.
 
 Using puppet and foreman together is a winning combination for systems provising and in this tutorial I will show you how to get up and running quickly by installing both puppet and foreman and then configuring them to talk to each other. There's a lot of software involved and this tutorial isn't even going to scratch the surface of what these two pieces of software can do, it's marely intended to get them installed and working.
 
@@ -26,9 +26,9 @@ setenforce 0
 ------
 
 === Getting the packages
-In order to install puppet and foreman we'll first need to set up a couple of additional yum repositories. For puppet we'll be using the EPEL repo. While PuppetLabs do provide their own repo, which includes a later release of puppet, unfortunately this is not compatible with the RPMS provided by the forman repo.
+In order to install puppet and foreman we'll first need to set up a couple of additional yum repositories. For puppet we'll be using the EPEL repo. While PuppetLabs do provide their own repo, which includes a later release of puppet, unfortunately this is not compatible with the RPMs provided by the forman repo.
 
-Run the following to set up the repos, install the software and ensure that each service is configured correctly for boot. Not that we will be using the foreman mysql package. To use another database backend, such as postgres, take a look at what is available in the repos with "yum search foreman".
+Run the following to set up the repos, install the software and ensure that each service is configured correctly for boot. Note that we will be using the foreman mysql package. To use another database backend, such as postgres, take a look at what is available in the repos with "yum search foreman".
 
 ------
 yum install http://mirror.optus.net/epel/6/i386/epel-release-6-8.noarch.rpm
@@ -44,7 +44,7 @@ chkconfig foreman off
 service mysqld start
 ------
 
-As you can see in the above, we've disabled puppet, puppetmaster and foreman to ensure that they are not started at boot. The reason for this is that they will instead be run using Apache and passenger (aka mod_ruby).
+As you can see in the above, we've disabled the puppetmaster and foreman services to ensure that they are not started at boot. The reason for this is that we will instead be using Apache and passenger (aka mod_ruby) to run Puppet and Foreman as it will allow us to scale to a much greater number of hosts on our network.
 
 === Configuring the database
 // Need to figure out how to use foot notes in asciidoc
@@ -58,6 +58,7 @@ mysql -u root -p
 mysql> create database foreman;
 mysql> grant all on foreman.* to 'foreman'@'localhost' identified by 'dbpassword123';
 mysql> flush privileges;
+mysql> quit;
 ------
 
 Next we need to modify the foreman settings to tell it the name of the database user credentials for which to access it with. Edit the _/etc/foreman/database.yml_ file to contain the following:
@@ -71,7 +72,7 @@ production:
   host: localhost
 ------
 
-Finally we need to populate the newly created database. You can do this using the following:
+Finally we need to populate the newly created database. This is done using the following command:
 ------
 su - foreman -s /bin/bash -c /usr/share/foreman/extras/dbmigrate
 ------
@@ -257,6 +258,7 @@ As can be seen in the above config. We have told puppet to retrieve node informa
 cd /etc/puppet/
 wget https://raw.github.com/theforeman/puppet-foreman/master/templates/external_node.rb.erb
 mv external_node.rb.erb node.rb
+chown puppet.puppet node.rb
 ------
 
 Modify the file to contain the following settings:
@@ -290,7 +292,7 @@ service httpd start
 ------
 
 == Testing
-All going well we should now be able to log in to the foreman web interface by browsing to http://server_ip:3000. This should present the setup page as we have not yet added any clients.
+All going well we should now be able to log in to the foreman web interface by browsing to http://server_ip:3000. This should present the welcome page as we have not yet added any clients.
 
 Running puppet on the server should send its host information to foreman:
 ------
