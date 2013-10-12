@@ -11,10 +11,10 @@
 ## ./init.sh setting-up-openldap
 ##
 
-if [ $# -ne 1 ]
+if [ -z $TUTORIAL ]
 then
-  echo "You must specify the name of a tutorial"
-  echo "Example: ./init.sh setting-up-openldap"
+  echo "You must set the TUTORIAL environment variable"
+  echo "Example: TUTORIAL=setting-up-openldap ./init.sh"
   exit -1
 fi
 
@@ -28,4 +28,4 @@ yum install -y salt-minion git
 git clone https://github.com/ctrlaltlinux/tutorials /root/ctrlaltlinux
 
 ## Finally, run salt to apply the server configuration
-salt-call --local --config-dir /root/ctrlaltlinux/$1/ state.highstate
+salt-call --local --config-dir /root/ctrlaltlinux/$TUTORIAL/ state.highstate
