@@ -1,0 +1,25 @@
+dn: dc=ctrlaltlinux,dc=net
+dc: ctrlaltlinux
+objectClass: top
+objectClass: domain
+
+dn: ou=addressbook,dc=ctrlaltlinux,dc=net
+objectclass: organizationalUnit
+objectclass: top
+ou: addressbook
+
+dn: cn=Doe Jane,ou=addressbook,dc=ctrlaltlinux,dc=net
+cn: Doe Jane
+givenname: Jane
+mail: janedoe@ctrlaltlinux.net
+objectclass: inetOrgPerson
+objectclass: top
+sn: Doe
+
+dn: cn=Doe John,ou=addressbook,dc=ctrlaltlinux,dc=net
+cn: Doe John
+givenname: John
+mail: johndoe@ctrlaltlinux.net
+objectclass: inetOrgPerson
+objectclass: top
+sn: Doe
